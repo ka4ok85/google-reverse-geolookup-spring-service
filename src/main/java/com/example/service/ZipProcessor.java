@@ -13,6 +13,8 @@ import com.example.dto.Call;
 import com.example.dto.GoogleGeoCodeResponse;
 import com.example.dto.GoogleGeoCodeResponseAddressComponent;
 
+import feign.FeignException;
+
 
 @EnableBinding(Processor.class) 
 public class ZipProcessor {
@@ -24,6 +26,9 @@ public class ZipProcessor {
 	@Value("${google.appKey}")
 	private String appKey;
 	
+    @Value("${service.name}")
+    private String serviceName;
+	
 	@Autowired
 	private ReverseGeoLookupResource reverseGeoLookupResource;
 	
@@ -31,23 +36,24 @@ public class ZipProcessor {
     @SendTo(Processor.OUTPUT)
     public Call transformToUpperCase(Call call) { // enrich Call object with Zip Code
 		// TODO: Add Hystrix Support
-		GoogleGeoCodeResponse response = reverseGeoLookupResource.getAddressDetails(String.valueOf(call.getLatitude()) + "," + String.valueOf(call.getLongitude()), appKey);
-
-		String zip = "";
-		for (GoogleGeoCodeResponseAddressComponent addressComponent : response.getResults()[0].getAddressComponents()) {
-			System.out.println(addressComponent);
-			
-			System.out.println(addressComponent.getTypes()[0]);
-			System.out.println(addressComponent.getShortName());			
-			if (addressComponent.getTypes()[0].equals(zipWord)) {
-				zip = addressComponent.getShortName();
-			}
-		}
 		
-		if (zip == "") {
-			log.warn("Can not lookup Zip! Service: {}. Incident: {}", "google-reverse-geolookup", call.getIncidentNumber());
-		} else {
-			call.setZip(zip);
+		try {
+			GoogleGeoCodeResponse response = reverseGeoLookupResource.getAddressDetails(String.valueOf(call.getLatitude()) + "," + String.valueOf(call.getLongitude()), appKey);
+	
+			String zip = "";
+			for (GoogleGeoCodeResponseAddressComponent addressComponent : response.getResults()[0].getAddressComponents()) {
+				if (addressComponent.getTypes()[0].equals(zipWord)) {
+					zip = addressComponent.getShortName();
+				}
+			}
+			
+			if (zip == "") {
+				log.error("Service: {}. Incident: {}. Can not lookup Zip!", serviceName, call.getIncidentNumber());
+			} else {
+				call.setZip(zip);
+			}
+        } catch (FeignException e) {
+        	log.error("Service: {}. Incident: {}. Can not fetch data from: {}", serviceName, call.getIncidentNumber(), e.getMessage());
 		}
 
         return call;
