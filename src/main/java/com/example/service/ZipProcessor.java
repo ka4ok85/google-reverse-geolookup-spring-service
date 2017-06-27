@@ -8,15 +8,18 @@ import org.springframework.cloud.stream.annotation.EnableBinding;
 import org.springframework.cloud.stream.annotation.StreamListener;
 import org.springframework.cloud.stream.messaging.Processor;
 import org.springframework.messaging.handler.annotation.SendTo;
+import org.springframework.retry.annotation.Retryable;
+import org.springframework.stereotype.Component;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
 
 import com.example.dto.Call;
 import com.example.dto.GoogleGeoCodeResponse;
 import com.example.dto.GoogleGeoCodeResponseAddressComponent;
 
-import feign.FeignException;
 
-
-@EnableBinding(Processor.class) 
+@EnableBinding(Processor.class)
+@Component
 public class ZipProcessor {
 
 	private static final Logger log = LoggerFactory.getLogger(ZipProcessor.class);
@@ -30,32 +33,36 @@ public class ZipProcessor {
     private String serviceName;
 	
 	@Autowired
-	private ReverseGeoLookupResource reverseGeoLookupResource;
+	private HystrixReverseGeoLookupService hystrixReverseGeoLookupService;
+	
 	
 	@StreamListener(Processor.INPUT)
     @SendTo(Processor.OUTPUT)
-    public Call transformToUpperCase(Call call) { // enrich Call object with Zip Code
-		// TODO: Add Hystrix Support
+    public Call addZipToTheCall(Call call) { // enrich Call object with Zip Code
+		if (call.getLatitude() == 0.0f && call.getLongitude() == 0.0f) {
+			log.warn("Service: {}. Incident: {}. Blank coordinates.", serviceName, call.getIncidentNumber());
+			return call;
+		}
 		
-		try {
-			GoogleGeoCodeResponse response = reverseGeoLookupResource.getAddressDetails(String.valueOf(call.getLatitude()) + "," + String.valueOf(call.getLongitude()), appKey);
-	
-			String zip = "";
-			for (GoogleGeoCodeResponseAddressComponent addressComponent : response.getResults()[0].getAddressComponents()) {
-				if (addressComponent.getTypes()[0].equals(zipWord)) {
-					zip = addressComponent.getShortName();
-				}
+		
+		GoogleGeoCodeResponse response = hystrixReverseGeoLookupService.getZip(String.valueOf(call.getLatitude()) + "," + String.valueOf(call.getLongitude()), appKey, call.getIncidentNumber());
+		String zip = "";
+
+		for (GoogleGeoCodeResponseAddressComponent addressComponent : response.getResults()[0].getAddressComponents()) {
+			if (addressComponent.getTypes()[0].equals(zipWord)) {
+				zip = addressComponent.getShortName();
 			}
+		}
 			
-			if (zip == "") {
-				log.error("Service: {}. Incident: {}. Can not lookup Zip!", serviceName, call.getIncidentNumber());
-			} else {
-				call.setZip(zip);
-			}
-        } catch (FeignException e) {
-        	log.error("Service: {}. Incident: {}. Can not fetch data from: {}", serviceName, call.getIncidentNumber(), e.getMessage());
+		if (zip.isEmpty()) {
+			log.error("Service: {}. Incident: {}. Can not lookup Zip!", serviceName, call.getIncidentNumber());
+		} else {
+			call.setZip(zip);
 		}
 
         return call;
     }
+	
+
+	
 }
