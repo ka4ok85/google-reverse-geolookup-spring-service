@@ -37,7 +37,7 @@ public class ZipProcessor {
     public Call addZipToTheCall(Call call) { // enrich Call object with Zip Code
 		if (call.getLatitude() == 0.0f && call.getLongitude() == 0.0f) {
 			log.warn("Service: {}. Incident: {}. Blank coordinates.", serviceName, call.getIncidentNumber());
-			return null;
+			return call;
 		}
 
 		GoogleGeoCodeResponse response = hystrixReverseGeoLookupService.getZip(String.valueOf(call.getLatitude()) + "," + String.valueOf(call.getLongitude()), appKey, call.getIncidentNumber());
