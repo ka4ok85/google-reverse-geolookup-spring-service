@@ -52,6 +52,7 @@ public class ZipProcessor {
 			
 		if (zip.isEmpty()) {
 			log.error("Service: {}. Incident: {}. Can not lookup Zip!", serviceName, call.getIncidentNumber());
+			log.error(response.toString());
 			return null;
 		} else {
 			call.setZip(zip);
